@@ -2,4 +2,4 @@
  
 Felipe Rieder
 
-Para o funccionamento do programa basta abrir o executável dentro da pasta TeabalhoSlither
+Para o funcionamento do programa basta abrir o executável dentro da pasta TrabalhoSlither
