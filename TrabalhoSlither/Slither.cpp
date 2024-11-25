@@ -45,6 +45,19 @@ struct Geometry {
     int nVertices;     // Número de vértices a desenhar
 };
 
+struct Circle {
+    float x, y;   // Coordenadas do centro
+    float radius; // Raio do círculo
+};
+
+struct Collectible {
+    Circle collisionCircle; // Círculo de colisão da bolinha
+    vec3 position;          // Posição da bolinha
+    vec3 color;            // Cor da bolinha
+	GLuint VAO;
+};
+
+std::vector<Collectible> collectibles;
 // Variáveis globais
 bool keys[1024];   // Estados das teclas (pressionadas/soltas)
 vec2 mousePos;     // Posição do cursor do mouse
@@ -54,7 +67,14 @@ vec3 dir = vec3(0.0, -1.0, 0.0); // Vetor direção (do objeto para o mouse)
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mode);
 int setupShader();           // Função para configurar os shaders
 int setupGeometry();         // Função para configurar a geometria (triângulo)
-void drawGeometry(GLuint shaderID, GLuint VAO, int nVertices, vec3 position, vec3 dimensions, float angle, vec3 color, GLuint drawingMode = GL_TRIANGLES, vec3 axis = vec3(0.0, 0.0, 1.0));
+void drawGeometry(GLuint shaderID, GLuint VAO, int nVertices, vec3 position, vec3 dimensions, float angle, vec3 color, GLuint drawingMode = GL_TRIANGLES, int offset = 0 , vec3 axis = vec3(0.0, 0.0, 1.0));
+
+
+//Função para iniciar coletávle (spawnar)
+void initCollectibles();
+//Colisão
+bool checkCircleCollision(Circle circle1, Circle circle2);
+int createCollectibleCircle(int nPoints, float radius);
 
 // Vetor que armazena todos os segmentos da cobrinha,
 // incluindo a cabeça
@@ -85,6 +105,9 @@ int main() {
         std::cout << "Falha ao inicializar GLAD" << std::endl;
         return -1;
     }
+
+	
+	initCollectibles();
     // Informações sobre o Renderer e a versão OpenGL
     const GLubyte *renderer = glGetString(GL_RENDERER);
     const GLubyte *version = glGetString(GL_VERSION);
@@ -112,7 +135,7 @@ int main() {
 	snake.push_back(head);
 	snake[0].VAO =  createCircle(32, 0.5);
 	snake[0].nVertices = 34;
-    snake[0].position = vec3(0.0, 0.0, 0.0);
+    snake[0].position = vec3(300.0, 300.0, 0.0);
     snake[0].color = vec3(1.0, 1.0, 0.0);  // Amarelo
     snake[0].dimensions = vec3(50.0, 50.0, 1.0);
 
@@ -121,7 +144,7 @@ int main() {
 	Geometry eyes = createSegment(0, dir);
 	eyes.VAO = createEyes(32, 0.25);
 	eyes.nVertices = 34;
-	eyes.position = vec3(400, 300, 0);
+	eyes.position = vec3(300, 300, 0);
 	eyes.dimensions = vec3(50, 50, 1.0);
 	eyes.angle = 0.0;
 	eyes.color = vec3(1.0, 1.0, 1.0);
@@ -155,12 +178,11 @@ int main() {
 
         // Move a cobrinha suavemente na direção do mouse
         if (distance(snake[0].position, vec3(mousePos, 0.0)) > 0.01f) {
-            snake[0].position += 0.75f * dir;  // Aumente ou diminua 0.5f para controlar a 
+            snake[0].position += 0.75f * dir; 
 			eyes.position = snake[0].position;
         }
 
-        // Atualiza o ângulo de rotação do triângulo
-        snake[0].angle = angle + radians(-90.0f); // Rotaciona para que a ponta aponte para o mouse
+        snake[0].angle = angle + radians(0.0f); // Rotaciona para que a ponta aponte para o mouse
 		eyes.angle = snake[0].angle;
 	
 		// Atualiza a posição dos segmentos da cobrinha para seguir a cabeça
@@ -180,8 +202,26 @@ int main() {
 			snake[i].position = mix(snake[i].position, targetPosition, dynamicSmoothFactor);
 		}
 
+		//Desenha os coletáveis
+		for (const auto& collectible : collectibles){
+    		drawGeometry(shaderID, collectible.VAO, 34, collectible.position, vec3(30.0, 30.0, 1.0), 0.0, collectible.color, GL_TRIANGLE_FAN);
+		}
+
+		//Checa as colisões
+		for (int i = 0; i < collectibles.size(); ) {
+    		if (checkCircleCollision({snake[0].position.x, snake[0].position.y, 25.0f}, collectibles[i].collisionCircle)) {
+        		collectibles.erase(collectibles.begin() + i); // Remove a bolinha coletada
+        		addNew = true; // Adiciona um segmento à cobrinha
+				initCollectibles();
+    		} 
+			else {
+        		++i;
+    		}
+		}
+
 		// Adiciona novos segmentos à cobrinha quando solicitado
 		if (addNew){
+			snake.push_back(createSegment(snake.size(), -dir));
 			snake.push_back(createSegment(snake.size(), -dir));
 			addNew = false;
 			}
@@ -195,11 +235,11 @@ int main() {
 		drawGeometry(shaderID, snake[i].VAO, snake[i].nVertices, snake[i].position, snake[i].dimensions, snake[i].angle, snake[i].color, GL_TRIANGLE_FAN);
 		if (i == 0){ // cabeça
 			// Desenha as escleras dos olhos
-			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, eyes.color, GL_TRIANGLE_FAN);
-			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, eyes.color, GL_TRIANGLE_FAN);
+			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, eyes.color, GL_TRIANGLE_FAN, 0);
+			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, eyes.color, GL_TRIANGLE_FAN, 34);
 			// Desenha as pupilas dos olhos
-			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, vec3(0.0, 0.0, 0.0), GL_TRIANGLE_FAN);
-			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, vec3(0.0, 0.0, 0.0), GL_TRIANGLE_FAN);
+			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, vec3(0.1, 0.1, 0.1), GL_TRIANGLE_FAN, 2*34);
+			drawGeometry(shaderID, eyes.VAO, eyes.nVertices, eyes.position, eyes.dimensions, eyes.angle, vec3(0.1, 0.1, 0.1), GL_TRIANGLE_FAN, 3*34);
 			}
 		}
 
@@ -226,8 +266,21 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS){
 		addNew = true;
 		}
+		
 }
 
+int createCollectibleCircle(int nPoints, float radius) {
+    return createCircle(nPoints, radius); // Usa a função createCircle existente
+}
+
+void initCollectibles() {
+	Collectible collectible;
+	collectible.position = vec3(rand() % WIDTH, rand() % HEIGHT, 0); // Posições aleatórias
+	collectible.color = vec3(0.0, 1.0, 0.0); // Cor verde
+	collectible.collisionCircle = {collectible.position.x, collectible.position.y, 1.0f}; // Raio da bolinha
+	collectible.VAO = createCollectibleCircle(32, 0.25f); // Cria a geometria da bolinha
+	collectibles.push_back(collectible);
+}
 
 // Configura e compila os shaders
 int setupShader() {
@@ -320,7 +373,7 @@ int setupGeometry() {
 }
 
 // Função para desenhar o objeto
-void drawGeometry(GLuint shaderID, GLuint VAO, int nVertices, vec3 position, vec3 dimensions, float angle, vec3 color, GLuint drawingMode, vec3 axis) {
+void drawGeometry(GLuint shaderID, GLuint VAO, int nVertices, vec3 position, vec3 dimensions, float angle, vec3 color, GLuint drawingMode, int offset, vec3 axis) {
     glBindVertexArray(VAO); // Vincula o VAO
 
     // Aplica as transformações de translação, rotação e escala
@@ -335,14 +388,13 @@ void drawGeometry(GLuint shaderID, GLuint VAO, int nVertices, vec3 position, vec
     glUniform4f(glGetUniformLocation(shaderID, "inputColor"), color.r, color.g, color.b, 1.0f);
 
     // Desenha o objeto
-    glDrawArrays(drawingMode, 0, nVertices);
+    glDrawArrays(drawingMode, offset, nVertices);
 
     // Desvincula o VAO
     glBindVertexArray(0);
 }
 
 Geometry createSegment(int i, vec3 dir){
-	std::cout << "Criando segmento " << i << std::endl;
 	// Inicializa um objeto Geometry para armazenar as informações do segmento
 	Geometry segment;
 	segment.VAO = createCircle(32, 0.5); // Cria a geometria do segmento como um círculo
@@ -366,7 +418,7 @@ Geometry createSegment(int i, vec3 dir){
 		segment.color = vec3(0, 0, 1); // Azul para segmentos de índice par
 	} 
 	else {
-		segment.color = vec3(1, 1, 0); // Amarelo para segmentos de índice ímpar
+		segment.color = vec3(1, 0, 0); // Vermelho para segmentos de índice ímpar
 	}
 	return segment;
 	}
@@ -442,7 +494,7 @@ int createEyes(int nPoints, float radius) {
 	float slice = 2 * Pi / static_cast<float>(nPoints);
 	// Posições iniciais para os círculos dos olhos (escleras e pupilas)
 	float xi = 0.125f; // Posição inicial X das escleras
-	float yi = 0.3f; // Posição inicial Y das escleras
+	float yi = 0.25f; // Posição inicial Y das escleras
 	radius = 0.225f; // Raio das escleras
 
 	// Olho esquerdo (esclera)
@@ -475,7 +527,7 @@ int createEyes(int nPoints, float radius) {
 	}
 
 	// Olho esquerdo (pupila)
-	radius = 0.18f; // Raio das pupilas
+	radius = 0.16f; // Raio das pupilas
 	xi += 0.09f; // Ajuste de posição para as pupilas
 	angle = 0.0;
 	vertices.push_back(xi); // Xc
@@ -525,4 +577,9 @@ int createEyes(int nPoints, float radius) {
 	glBindVertexArray(0);
 	// Retorna o identificador do VAO, que será utilizado para desenhar os olhos (escleras e pupilas)
 	return VAO;
+}
+
+bool checkCircleCollision(Circle circle1, Circle circle2) {
+    float distance = sqrt(pow(circle1.x - circle2.x, 2) + pow(circle1.y - circle2.y, 2));
+    return distance < (circle1.radius + circle2.radius);
 }
